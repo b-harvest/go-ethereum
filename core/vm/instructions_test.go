@@ -46,9 +46,11 @@ type twoOperandParams struct {
 	y string
 }
 
-var alphabetSoup = "ABCDEF090807060504030201ffffffffffffffffffffffffffffffffffffffff"
-var commonParams []*twoOperandParams
-var twoOpMethods map[string]executionFunc
+var (
+	alphabetSoup = "ABCDEF090807060504030201ffffffffffffffffffffffffffffffffffffffff"
+	commonParams []*twoOperandParams
+	twoOpMethods map[string]executionFunc
+)
 
 type contractRef struct {
 	addr common.Address
@@ -105,10 +107,10 @@ func init() {
 
 func testTwoOperandOp(t *testing.T, tests []TwoOperandTestcase, opFn executionFunc, name string) {
 	var (
-		env            = NewEVM(BlockContext{}, TxContext{}, nil, params.TestChainConfig, Config{})
-		stack          = newstack()
-		pc             = uint64(0)
-		evmInterpreter = env.interpreter
+		env         = NewEVM(BlockContext{}, TxContext{}, nil, params.TestChainConfig, Config{})
+		stack       = newstack()
+		pc          = uint64(0)
+		interpreter = env.interpreter
 	)
 
 	for i, test := range tests {
@@ -117,7 +119,7 @@ func testTwoOperandOp(t *testing.T, tests []TwoOperandTestcase, opFn executionFu
 		expected := new(uint256.Int).SetBytes(common.Hex2Bytes(test.Expected))
 		stack.push(x)
 		stack.push(y)
-		opFn(&pc, evmInterpreter, &ScopeContext{nil, stack, nil})
+		opFn(&pc, interpreter.(*EVMInterpreter), &ScopeContext{nil, stack, nil})
 		if len(stack.data) != 1 {
 			t.Errorf("Expected one item on stack after %v, got %d: ", name, len(stack.data))
 		}
@@ -215,7 +217,8 @@ func TestAddMod(t *testing.T) {
 		z        string
 		expected string
 	}{
-		{"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+		{
+			"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
 			"fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe",
 			"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
 			"fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe",
@@ -259,7 +262,7 @@ func TestWriteExpectedValues(t *testing.T) {
 			y := new(uint256.Int).SetBytes(common.Hex2Bytes(param.y))
 			stack.push(x)
 			stack.push(y)
-			opFn(&pc, interpreter, &ScopeContext{nil, stack, nil})
+			opFn(&pc, interpreter.(*EVMInterpreter), &ScopeContext{nil, stack, nil})
 			actual := stack.pop()
 			result[i] = TwoOperandTestcase{param.x, param.y, fmt.Sprintf("%064x", actual)}
 		}
@@ -271,7 +274,7 @@ func TestWriteExpectedValues(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_ = os.WriteFile(fmt.Sprintf("testdata/testcases_%v.json", name), data, 0644)
+		_ = os.WriteFile(fmt.Sprintf("testdata/testcases_%v.json", name), data, 0o644)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -460,11 +463,13 @@ func BenchmarkOpEq(b *testing.B) {
 
 	opBenchmark(b, opEq, x, y)
 }
+
 func BenchmarkOpEq2(b *testing.B) {
 	x := "FBCDEF090807060504030201ffffffffFBCDEF090807060504030201ffffffff"
 	y := "FBCDEF090807060504030201ffffffffFBCDEF090807060504030201fffffffe"
 	opBenchmark(b, opEq, x, y)
 }
+
 func BenchmarkOpAnd(b *testing.B) {
 	x := alphabetSoup
 	y := alphabetSoup
@@ -515,18 +520,21 @@ func BenchmarkOpSHL(b *testing.B) {
 
 	opBenchmark(b, opSHL, x, y)
 }
+
 func BenchmarkOpSHR(b *testing.B) {
 	x := "FBCDEF090807060504030201ffffffffFBCDEF090807060504030201ffffffff"
 	y := "ff"
 
 	opBenchmark(b, opSHR, x, y)
 }
+
 func BenchmarkOpSAR(b *testing.B) {
 	x := "FBCDEF090807060504030201ffffffffFBCDEF090807060504030201ffffffff"
 	y := "ff"
 
 	opBenchmark(b, opSAR, x, y)
 }
+
 func BenchmarkOpIsZero(b *testing.B) {
 	x := "FBCDEF090807060504030201ffffffffFBCDEF090807060504030201ffffffff"
 	opBenchmark(b, opIszero, x)
@@ -729,12 +737,12 @@ func TestRandom(t *testing.T) {
 		{name: "hash(0x010203)", random: crypto.Keccak256Hash([]byte{0x01, 0x02, 0x03})},
 	} {
 		var (
-			env            = NewEVM(BlockContext{Random: &tt.random}, TxContext{}, nil, params.TestChainConfig, Config{})
-			stack          = newstack()
-			pc             = uint64(0)
-			evmInterpreter = env.interpreter
+			env         = NewEVM(BlockContext{Random: &tt.random}, TxContext{}, nil, params.TestChainConfig, Config{})
+			stack       = newstack()
+			pc          = uint64(0)
+			interpreter = env.interpreter
 		)
-		opRandom(&pc, evmInterpreter, &ScopeContext{nil, stack, nil})
+		opRandom(&pc, interpreter.(*EVMInterpreter), &ScopeContext{nil, stack, nil})
 		if len(stack.data) != 1 {
 			t.Errorf("Expected one item on stack after %v, got %d: ", tt.name, len(stack.data))
 		}
@@ -776,7 +784,7 @@ func TestBlobHash(t *testing.T) {
 			evmInterpreter = env.interpreter
 		)
 		stack.push(uint256.NewInt(tt.idx))
-		opBlobHash(&pc, evmInterpreter, &ScopeContext{nil, stack, nil})
+		opBlobHash(&pc, evmInterpreter.(*EVMInterpreter), &ScopeContext{nil, stack, nil})
 		if len(stack.data) != 1 {
 			t.Errorf("Expected one item on stack after %v, got %d: ", tt.name, len(stack.data))
 		}
@@ -917,7 +925,7 @@ func TestOpMCopy(t *testing.T) {
 			mem.Resize(memorySize)
 		}
 		// Do the copy
-		opMcopy(&pc, evmInterpreter, &ScopeContext{mem, stack, nil})
+		opMcopy(&pc, evmInterpreter.(*EVMInterpreter), &ScopeContext{mem, stack, nil})
 		want := common.FromHex(strings.ReplaceAll(tc.want, " ", ""))
 		if have := mem.store; !bytes.Equal(want, have) {
 			t.Errorf("case %d: \nwant: %#x\nhave: %#x\n", i, want, have)
