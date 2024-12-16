@@ -100,14 +100,14 @@ func (s *Server) logCounters() {
 	for {
 		select {
 		case <-ticker.C:
-			// Collect counter values atomically
-			notifiedBatch := atomic.LoadUint32(&s.notifiedBatch)
-			timedOutBatch := atomic.LoadUint32(&s.timedOutBatch)
-			emptyBatch := atomic.LoadUint32(&s.emptyBatch)
-			wroteBatch := atomic.LoadUint32(&s.wroteBatch)
-			notifiedReq := atomic.LoadUint32(&s.notifiedReq)
-			timedOut := atomic.LoadUint32(&s.timedOut)
-			wrote := atomic.LoadUint32(&s.wrote)
+			// Atomically load and reset counters
+			notifiedBatch := atomic.SwapUint32(&s.notifiedBatch, 0)
+			timedOutBatch := atomic.SwapUint32(&s.timedOutBatch, 0)
+			emptyBatch := atomic.SwapUint32(&s.emptyBatch, 0)
+			wroteBatch := atomic.SwapUint32(&s.wroteBatch, 0)
+			notifiedReq := atomic.SwapUint32(&s.notifiedReq, 0)
+			timedOut := atomic.SwapUint32(&s.timedOut, 0)
+			wrote := atomic.SwapUint32(&s.wrote, 0)
 
 			// Get the current timestamp
 			timestamp := time.Now().UTC().UnixNano()
