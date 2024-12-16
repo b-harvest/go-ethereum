@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/log"
@@ -162,12 +163,15 @@ func (b *batchCallBuffer) doWrite(ctx context.Context, conn jsonWriter, isErrorR
 }
 
 // handleBatch executes all messages in a batch and returns the responses.
-func (h *handler) handleBatch(msgs []*jsonrpcMessage) {
+func (h *handler) handleBatch(msgs []*jsonrpcMessage, emptyBatch, wroteBatch, timedOutBatch *uint32) {
 	// Emit error response for empty batches:
 	if len(msgs) == 0 {
 		h.startCallProc(func(cp *callProc) {
 			resp := errorMessage(&invalidRequestError{"empty batch"})
 			h.conn.writeJSON(cp.ctx, resp, true)
+			if emptyBatch != nil {
+				atomic.AddUint32(emptyBatch, 1)
+			}
 		})
 		return
 	}
@@ -200,6 +204,9 @@ func (h *handler) handleBatch(msgs []*jsonrpcMessage) {
 			timer = time.AfterFunc(timeout, func() {
 				cancel()
 				callBuffer.timeout(cp.ctx, h.conn)
+				if timedOutBatch != nil {
+					atomic.AddUint32(timedOutBatch, 1)
+				}
 			})
 		}
 
@@ -219,6 +226,9 @@ func (h *handler) handleBatch(msgs []*jsonrpcMessage) {
 			timer.Stop()
 		}
 		callBuffer.write(cp.ctx, h.conn)
+		if wroteBatch != nil {
+			atomic.AddUint32(wroteBatch, 1)
+		}
 		h.addSubscriptions(cp.notifiers)
 		for _, n := range cp.notifiers {
 			n.activate()
@@ -227,7 +237,7 @@ func (h *handler) handleBatch(msgs []*jsonrpcMessage) {
 }
 
 // handleMsg handles a single message.
-func (h *handler) handleMsg(msg *jsonrpcMessage) {
+func (h *handler) handleMsg(msg *jsonrpcMessage, wrote, timedOut *uint32) {
 	if ok := h.handleImmediate(msg); ok {
 		return
 	}
@@ -249,6 +259,9 @@ func (h *handler) handleMsg(msg *jsonrpcMessage) {
 				responded.Do(func() {
 					resp := msg.errorResponse(&internalServerError{errcodeTimeout, errMsgTimeout})
 					h.conn.writeJSON(cp.ctx, resp, true)
+					if timedOut != nil {
+						atomic.AddUint32(timedOut, 1)
+					}
 				})
 			})
 		}
@@ -261,6 +274,9 @@ func (h *handler) handleMsg(msg *jsonrpcMessage) {
 		if answer != nil {
 			responded.Do(func() {
 				h.conn.writeJSON(cp.ctx, answer, false)
+				if wrote != nil {
+					atomic.AddUint32(wrote, 1)
+				}
 			})
 		}
 		for _, n := range cp.notifiers {

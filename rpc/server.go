@@ -18,9 +18,12 @@ package rpc
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"os"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/ethereum/go-ethereum/log"
 )
@@ -49,6 +52,17 @@ type Server struct {
 	mutex  sync.Mutex
 	codecs map[ServerCodec]struct{}
 	run    int32
+
+	// counters for request statistics
+	notifiedBatch uint32
+	timedOutBatch uint32
+	emptyBatch    uint32
+	wroteBatch    uint32
+	notifiedReq   uint32
+	timedOut      uint32
+	wrote         uint32
+	// File for logging counters
+	counterFile *os.File
 }
 
 // NewServer creates a new server instance with no registered handlers.
@@ -58,11 +72,56 @@ func NewServer() *Server {
 		codecs: make(map[ServerCodec]struct{}),
 		run:    1,
 	}
+	var err error
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Error("Failed to get user home directory", "err", err)
+	}
+	server.counterFile, err = os.OpenFile(homeDir+"/customlogs/geth_rpc-server-counters.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Error("Failed to open counters.log", "err", err)
+	}
+
+	// Start the counter logging goroutine
+	go server.logCounters()
+
 	// Register the default service providing meta information about the RPC service such
 	// as the services and methods it offers.
 	rpcService := &RPCService{server}
 	server.RegisterName(MetadataApi, rpcService)
 	return server
+}
+
+// logCounters logs the counter values every 1 second
+func (s *Server) logCounters() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			// Collect counter values atomically
+			notifiedBatch := atomic.LoadUint32(&s.notifiedBatch)
+			timedOutBatch := atomic.LoadUint32(&s.timedOutBatch)
+			emptyBatch := atomic.LoadUint32(&s.emptyBatch)
+			wroteBatch := atomic.LoadUint32(&s.wroteBatch)
+			notifiedReq := atomic.LoadUint32(&s.notifiedReq)
+			timedOut := atomic.LoadUint32(&s.timedOut)
+			wrote := atomic.LoadUint32(&s.wrote)
+
+			// Get the current timestamp
+			timestamp := time.Now().UTC().UnixNano()
+
+			// Create a CSV line
+			logLine := fmt.Sprintf("%d,%d,%d,%d,%d,%d,%d,%d\n",
+				timestamp, notifiedBatch, timedOutBatch, emptyBatch, wroteBatch, notifiedReq, timedOut, wrote)
+
+			// Append the line to the file
+			if _, err := s.counterFile.WriteString(logLine); err != nil {
+				fmt.Printf("failed to write counter log: %v\n", err)
+			}
+		}
+	}
 }
 
 // RegisterName creates a service for the given receiver type under the given name. When no
@@ -131,9 +190,11 @@ func (s *Server) serveSingleRequest(ctx context.Context, codec ServerCodec) {
 		return
 	}
 	if batch {
-		h.handleBatch(reqs)
+		atomic.AddUint32(&s.notifiedBatch, 1)
+		h.handleBatch(reqs, &s.emptyBatch, &s.wroteBatch, &s.timedOutBatch)
 	} else {
-		h.handleMsg(reqs[0])
+		atomic.AddUint32(&s.notifiedReq, 1)
+		h.handleMsg(reqs[0], &s.wrote, &s.timedOut)
 	}
 }
 
@@ -149,6 +210,10 @@ func (s *Server) Stop() {
 		for codec := range s.codecs {
 			codec.close()
 		}
+	}
+
+	if s.counterFile != nil {
+		s.counterFile.Close()
 	}
 }
 
