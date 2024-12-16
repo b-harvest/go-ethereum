@@ -29,6 +29,7 @@ import (
 	"net/url"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -310,6 +311,7 @@ func (t *httpServerConn) SetWriteDeadline(time.Time) error { return nil }
 
 // ServeHTTP serves JSON-RPC requests over HTTP.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	atomic.AddUint32(&s.serveHTTP, 1)
 	// Permit dumb empty requests for remote health-checks (AWS)
 	if r.Method == http.MethodGet && r.ContentLength == 0 && r.URL.RawQuery == "" {
 		w.WriteHeader(http.StatusOK)

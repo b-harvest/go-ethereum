@@ -54,13 +54,10 @@ type Server struct {
 	run    int32
 
 	// counters for request statistics
-	notifiedBatch uint32
-	timedOutBatch uint32
-	emptyBatch    uint32
-	wroteBatch    uint32
-	notifiedReq   uint32
-	timedOut      uint32
-	wrote         uint32
+	serveHTTP   uint32
+	notifiedReq uint32
+	timedOut    uint32
+	wrote       uint32
 	// File for logging counters
 	counterFile *os.File
 }
@@ -101,10 +98,7 @@ func (s *Server) logCounters() {
 		select {
 		case <-ticker.C:
 			// Atomically load and reset counters
-			notifiedBatch := atomic.SwapUint32(&s.notifiedBatch, 0)
-			timedOutBatch := atomic.SwapUint32(&s.timedOutBatch, 0)
-			emptyBatch := atomic.SwapUint32(&s.emptyBatch, 0)
-			wroteBatch := atomic.SwapUint32(&s.wroteBatch, 0)
+			serveHTTP := atomic.SwapUint32(&s.serveHTTP, 0)
 			notifiedReq := atomic.SwapUint32(&s.notifiedReq, 0)
 			timedOut := atomic.SwapUint32(&s.timedOut, 0)
 			wrote := atomic.SwapUint32(&s.wrote, 0)
@@ -113,8 +107,8 @@ func (s *Server) logCounters() {
 			timestamp := time.Now().UTC().UnixNano()
 
 			// Create a CSV line
-			logLine := fmt.Sprintf("%d,%d,%d,%d,%d,%d,%d,%d\n",
-				timestamp, notifiedBatch, timedOutBatch, emptyBatch, wroteBatch, notifiedReq, timedOut, wrote)
+			logLine := fmt.Sprintf("%d,%d,%d,%d,%d\n",
+				timestamp, serveHTTP, notifiedReq, timedOut, wrote)
 
 			// Append the line to the file
 			if _, err := s.counterFile.WriteString(logLine); err != nil {
@@ -190,8 +184,7 @@ func (s *Server) serveSingleRequest(ctx context.Context, codec ServerCodec) {
 		return
 	}
 	if batch {
-		atomic.AddUint32(&s.notifiedBatch, 1)
-		h.handleBatch(reqs, &s.emptyBatch, &s.wroteBatch, &s.timedOutBatch)
+		h.handleBatch(reqs)
 	} else {
 		atomic.AddUint32(&s.notifiedReq, 1)
 		h.handleMsg(reqs[0], &s.wrote, &s.timedOut)
