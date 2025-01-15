@@ -74,7 +74,18 @@ func NewServer() *Server {
 	if err != nil {
 		log.Error("Failed to get user home directory", "err", err)
 	}
-	server.counterFile, err = os.OpenFile(homeDir+"/customlogs/geth_rpc-server-counters.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+
+	logDir := homeDir + "/customlogs"
+
+	// Check if the directory exists, if not create it
+	if _, err := os.Stat(logDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			log.Error("Failed to create customlogs directory", "err", err)
+			return nil
+		}
+	}
+
+	server.counterFile, err = os.OpenFile(logDir+"/geth_rpc-server-counters.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Error("Failed to open counters.log", "err", err)
 	}
