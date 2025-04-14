@@ -65,6 +65,10 @@ type JumpTable [256]*operation
 // DefaultJumpTable defines the default jump table used by the EVM interpreter.
 func DefaultJumpTable(rules params.Rules) (jumpTable *JumpTable) {
 	switch {
+	case rules.IsCancun:
+		jumpTable = &CancunInstructionSet
+	case rules.IsShanghai:
+		jumpTable = &ShanghaiInstructionSet
 	case rules.IsMerge:
 		jumpTable = &MergeInstructionSet
 	case rules.IsLondon:
