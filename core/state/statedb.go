@@ -1054,3 +1054,11 @@ func (s *StateDB) AddressInAccessList(addr common.Address) bool {
 func (s *StateDB) SlotInAccessList(addr common.Address, slot common.Hash) (addressPresent bool, slotPresent bool) {
 	return s.accessList.Contains(addr, slot)
 }
+
+func (s *StateDB) GetTransientState(addr common.Address, key common.Hash) common.Hash {
+	panic("not implemented")
+}
+
+func (s *StateDB) SetTransientState(addr common.Address, key, value common.Hash) {
+	panic("not implemented")
+}
